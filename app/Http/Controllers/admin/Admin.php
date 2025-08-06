@@ -22,6 +22,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use PromptPayQR\Builder;
 use Illuminate\Support\Facades\Schema;
+use App\Helpers\RoleHelper;
+use Illuminate\Support\Facades\Hash;
 class Admin extends Controller
 {
   public function dashboard()
@@ -1404,4 +1406,166 @@ public function markAllNotificationsAsRead()
     
     return response()->json(['status' => true]);
 }
+
+// เพิ่ม Method สำหรับจัดการผู้ใช้ (เฉพาะ Owner)
+    public function users()
+    {
+        if (!RoleHelper::isOwner()) {
+            abort(403, 'เฉพาะเจ้าของเท่านั้น');
+        }
+
+        $data['function_key'] = 'admin.users';
+        
+        return view('admin.users.index', $data);
+    }
+     public function userslistData()
+    {
+        $data = [
+            'status' => false,
+            'message' => '',
+            'data' => []
+        ];
+
+        $users = User::whereIn('role', ['owner', 'manager', 'cashier', 'staff', 'admin'])->get();
+
+        if (count($users) > 0) {
+            $info = [];
+            foreach ($users as $rs) {
+                $action = '<a href="' . route('admin.usersEdit', $rs->id) . '" class="btn btn-sm btn-outline-primary" title="แก้ไข"><i class="bx bx-edit-alt"></i></a>
+                <button type="button" data-id="' . $rs->id . '" class="btn btn-sm btn-outline-danger deleteUser" title="ลบ"><i class="bx bxs-trash"></i></button>';
+                $info[] = [
+                    'name' => $rs->name,
+                    'email' => $rs->email,
+                    'tel' => $rs->tel,
+                    'role' => $rs->role,
+                    'action' => $action
+                ];
+            }
+            $data = [
+                'data' => $info,
+                'status' => true,
+                'message' => 'success'
+            ];
+        }
+
+        return response()->json($data);
+    }
+
+    public function usersCreate()
+    {
+        if (!RoleHelper::isOwner()) {
+            abort(403, 'เฉพาะเจ้าของเท่านั้น');
+        }
+
+        $data['function_key'] = 'admin.users';
+        return view('admin.users.create', $data);
+    }
+
+    public function usersEdit($id)
+{
+    if (!RoleHelper::isOwner()) {
+        abort(403, 'เฉพาะเจ้าของเท่านั้น');
+    }
+
+    $info = User::find($id);
+    
+    if (!$info) {
+        return redirect()->route('admin.users')->with('error', 'ไม่พบข้อมูลผู้ใช้');
+    }
+
+    $data = [
+        'function_key' => 'admin.users',
+        'info' => $info
+    ];
+
+    return view('admin.users.edit', $data);
+}
+
+    public function usersSave(Request $request)
+    {
+        if (!RoleHelper::isOwner()) {
+            abort(403, 'เฉพาะเจ้าของเท่านั้น');
+        }
+        $input = $request->input();
+
+        if (!isset($input['id'])) {
+            // check duplicate email
+            if (User::where('email', $input['email'])->exists()) {
+                return redirect()->back()->with('error', 'อีเมลซ้ำ กรุณาใส่ใหม่');
+            }
+            // check duplicate name
+            if (User::where('name', $input['name'])->exists()) {
+                return redirect()->back()->with('error', 'ชื่อผู้ใช้ซ้ำ กรุณาใส่ใหม่');
+            }
+            // check duplicate tel
+            if (User::where('tel', $input['tel'])->exists()) {
+                return redirect()->back()->with('error', 'เบอร์ติดต่อซ้ำ กรุณาใส่ใหม่');
+            }
+            $user = new User();
+            $user->name = $input['name'];
+            $user->email = $input['email'];
+            $user->tel = $input['tel'];
+            $user->role = $input['role'];
+            $user->email_verified_at = now();
+            $user->password = Hash::make($input['password']);
+            $user->remember_token = null;
+            if ($user->save()) {
+                return redirect()->route('admin.users')->with('success', 'บันทึกรายการเรียบร้อยแล้ว');
+            }
+        } else {
+            $user = User::find($input['id']);
+             // check duplicates for update except current record
+            if (User::where('email', $input['email'])->where('id', '!=', $input['id'])->exists()) {
+                return redirect()->back()->with('error', 'อีเมลซ้ำ กรุณาใส่ใหม่');
+            }
+            if (User::where('name', $input['name'])->where('id', '!=', $input['id'])->exists()) {
+                return redirect()->back()->with('error', 'ชื่อผู้ใช้ซ้ำ กรุณาใส่ใหม่');
+            }
+            if (User::where('tel', $input['tel'])->where('id', '!=', $input['id'])->exists()) {
+                return redirect()->back()->with('error', 'เบอร์ติดต่อซ้ำ กรุณาใส่ใหม่');
+            }
+            $user->name = $input['name'];
+            $user->email = $input['email'];
+            $user->tel = $input['tel'];
+            $user->role = $input['role'];
+            if (!empty($input['password'])) {
+                $user->password = Hash::make($input['password']);
+            }
+            if ($user->save()) {
+                return redirect()->route('admin.users')->with('success', 'บันทึกรายการเรียบร้อยแล้ว');
+            }
+        }
+
+        return redirect()->route('admin.users')->with('error', 'ไม่สามารถบันทึกข้อมูลได้');
+    }
+
+    public function usersDelete(Request $request)
+    {
+        if (!RoleHelper::isOwner()) {
+            return response()->json([
+                'status' => false,
+                'message' => 'ไม่มีสิทธิ์',
+            ]);
+        }
+
+        $data = [
+            'status' => false,
+            'message' => 'ลบข้อมูลไม่สำเร็จ',
+        ];
+        $id = $request->input('id');
+        if ($id) {
+            $delete = User::find($id);
+            if ($delete->delete()) {
+                $data = [
+                    'status' => true,
+                    'message' => 'ลบข้อมูลเรียบร้อยแล้ว',
+                ];
+            }
+        }
+
+        return response()->json($data);
+        
+
+        
+    }
 }

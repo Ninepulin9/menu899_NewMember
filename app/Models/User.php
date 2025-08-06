@@ -23,6 +23,14 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'tel',
+        'role',
+        'email_verified_at',
+        'last_login',
+        'is_active',
+        'employee_id',
+        'is_rider',
+        'is_member',
     ];
 
     /**
@@ -43,4 +51,9 @@ class User extends Authenticatable
     protected $casts = [
         'email_verified_at' => 'datetime',
     ];
+
+    public function categories()
+    {
+        return $this->hasOne(UsersCategories::class, 'users_id');
+    }
 }

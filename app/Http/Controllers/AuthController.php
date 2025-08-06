@@ -15,27 +15,33 @@ class AuthController extends Controller
         return view('login');
     }
 
-    public function login(Request $request)
-    {
-        $request->validate([
-            'email' => 'required|email',
-            'password' => 'required'
-        ]);
+   public function login(Request $request)
+{
+    $request->validate([
+        'email' => 'required|email',
+        'password' => 'required'
+    ]);
 
-        $user = User::where('email', $request->email)->first();
+    // ดึง user พร้อมความสัมพันธ์กับ categories
+    $user = User::where('email', $request->email)->with('categories')->first();
 
-        if ($user && Hash::check($request->password, $user->password)) {
-            Session::put('user', $user); // เก็บ user ไว้ใน session
+    if ($user && Hash::check($request->password, $user->password)) {
+        Session::put('user', $user); 
 
-            if ($user->role === 'admin') {
-                return redirect('/admin');
-            } else {
-                return redirect('/delivery');
-            }
+        if ($user->role === 'owner') {
+            return redirect('/admin');
         }
 
-        return back()->withErrors(['email' => 'อีเมลหรือรหัสผ่านไม่ถูกต้อง']);
+        if (in_array($user->role, ['manager', 'cashier', 'staff', 'user'])) {
+            return redirect('/admin/memberorder');
+        }
+
+        return redirect('/delivery');
     }
+
+    return back()->withErrors(['email' => 'อีเมลหรือรหัสผ่านไม่ถูกต้อง']);
+}
+
 
     public function logout()
     {
